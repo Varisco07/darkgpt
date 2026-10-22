@@ -5,13 +5,13 @@ oppure da un file ``.env`` nella root del progetto. I segreti non devono mai
 essere scritti nel codice: questo modulo non ne contiene e non li logga.
 """
 
-from __future__ import annotations
-
+import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Radice del repository: backend/app/core/config.py -> ../../..
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -33,7 +33,11 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     debug: bool = False
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # `NoDecode` impedisce a pydantic-settings di decodificare il valore come
+    # JSON prima del validatore: cosi' `.env` puo' contenere un CSV semplice.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
 
     # --- Storage ----------------------------------------------------------
     database_url: str = f"sqlite:///{(REPO_ROOT / 'darkgpt.db').as_posix()}"
@@ -72,15 +76,43 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
-        """Accetta sia una lista sia una stringa CSV nelle variabili d'ambiente."""
+        """Accetta una lista, una stringa CSV o un array JSON nell'ambiente."""
         if isinstance(value, str):
-            return [item.strip() for item in value.split(",") if item.strip()]
+            text = value.strip()
+            if text.startswith("["):
+                try:
+                    decoded = json.loads(text)
+                except json.JSONDecodeError:
+                    decoded = None
+                if isinstance(decoded, list):
+                    return [str(item).strip() for item in decoded if str(item).strip()]
+            return [item.strip() for item in text.split(",") if item.strip()]
         return value
 
     @field_validator("lab_root")
     @classmethod
     def _absolute_lab_root(cls, value: Path) -> Path:
         return value if value.is_absolute() else (REPO_ROOT / value).resolve()
+
+    @field_validator("database_url")
+    @classmethod
+    def _absolute_sqlite_path(cls, value: str) -> str:
+        """Rende assoluto il file di un database SQLite indicato con path relativo.
+
+        `sqlite:///./darkgpt.db` dipende dalla directory di lavoro: avviando il
+        backend da una cartella diversa si creerebbe un secondo database vuoto.
+        Il percorso relativo viene quindi risolto rispetto alla root del repo.
+        """
+        prefix = "sqlite:///"
+        if not value.startswith(prefix):
+            return value
+        raw = value[len(prefix) :]
+        if not raw or raw.startswith(":memory:"):
+            return value
+        path = Path(raw)
+        if path.is_absolute():
+            return value
+        return f"{prefix}{(REPO_ROOT / path).resolve().as_posix()}"
 
     @property
     def effective_llm_base_url(self) -> str:

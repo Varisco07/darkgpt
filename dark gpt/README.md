@@ -43,18 +43,21 @@ riporta solo cio' che e' stato effettivamente raccolto.
 
 ## Installazione
 
-```bash
-# 1. Backend
+```powershell
+# 1. Backend (PowerShell)
 python -m venv .venv
-.venv/Scripts/python -m pip install -r backend/requirements.txt   # Windows
-# .venv/bin/python -m pip install -r backend/requirements.txt     # Linux/macOS
+& .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 
 # 2. Configurazione
-copy .env.example .env        # Windows (su Linux/macOS: cp .env.example .env)
+Copy-Item .env.example .env
 
 # 3. Frontend
-cd frontend && npm install && cd ..
+cd frontend
+npm.cmd install
+cd ..
 ```
+
+Su Linux/macOS/Git Bash gli stessi passi con `.venv/bin/python` e `cp`.
 
 In alternativa, con `make` disponibile:
 
@@ -64,11 +67,60 @@ make install
 
 ## Avvio
 
+### Windows — percorso consigliato
+
+Il modo piu' semplice e' uno script che avvia entrambi i servizi in due
+finestre. Su questa macchina la policy di esecuzione di PowerShell e'
+`Restricted` (impostazione predefinita di Windows), quindi anche i file `.ps1`
+vengono bloccati: la via che funziona sempre senza modificare la macchina e'
+il launcher `.cmd`.
+
+```bat
+scripts\dev.cmd
+```
+
+Da PowerShell, lo stesso launcher:
+
+```powershell
+cmd /c scripts\dev.cmd
+```
+
+Se vuoi usare lo script PowerShell (avvio selettivo), invocalo con la policy
+bypassata per il singolo processo:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev.ps1 -Target backend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev.ps1 -Target frontend
+```
+
+In alternativa due terminali, con i comandi corretti per PowerShell:
+
+```powershell
+# Terminale 1 — backend (127.0.0.1:8000)
+& .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload
+
+# Terminale 2 — dashboard (localhost:3000)
+cd frontend
+npm.cmd run dev
+```
+
+> **Nota PowerShell.** I comandi in stile bash (`.venv/Scripts/python ...`,
+> `cd frontend && npm run dev`) non funzionano in PowerShell: serve `&` davanti
+> al percorso dell'eseguibile e `.\` per i comandi locali. Inoltre `npm` e'
+> uno script `.ps1` e su Windows puo' essere bloccato dalla policy
+> (`Impossibile caricare il file ...\npm.ps1. L'esecuzione di script e'
+> disabilitata`): usando `npm.cmd` (o gli script qui sopra) il problema non si
+> presenta. Se preferisci abilitare gli script per il tuo utente:
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+### Linux / macOS / Git Bash
+
 Due terminali:
 
 ```bash
 # Terminale 1 — backend (127.0.0.1:8000)
-.venv/Scripts/python -m uvicorn app.main:app --app-dir backend --reload
+.venv/bin/python -m uvicorn app.main:app --app-dir backend --reload
 
 # Terminale 2 — dashboard (localhost:3000)
 cd frontend && npm run dev
@@ -172,25 +224,30 @@ l'endpoint numerico rifiuta l'input non numerico.
 
 ## Test
 
-```bash
+```powershell
 # Intera suite (backend + laboratorio + game)
-.venv/Scripts/python scripts/run_tests.py
+& .\.venv\Scripts\python.exe scripts\run_tests.py
 
 # Solo backend
-cd backend && ../.venv/Scripts/python -m pytest -q
+cd backend
+& ..\.venv\Scripts\python.exe -m pytest -q
+cd ..
 
 # Solo laboratorio
-.venv/Scripts/python -m pytest lab/tests -q
+& .\.venv\Scripts\python.exe -m pytest lab\tests -q
 
 # Verifica end-to-end dell'API reale
-.venv/Scripts/python scripts/smoke_e2e.py
+& .\.venv\Scripts\python.exe scripts\smoke_e2e.py
 
 # Verifica che TUTTO funzioni da zero (come un primo avvio)
-.venv/Scripts/python scripts/cold_start.py
+& .\.venv\Scripts\python.exe scripts\cold_start.py
 
 # Validazione esaustiva del CVSS su tutti i 2592 vettori base
-.venv/Scripts/python scripts/validate_cvss.py
+& .\.venv\Scripts\python.exe scripts\validate_cvss.py
 ```
+
+> Su Linux/macOS/Git Bash usare `.venv/bin/python` al posto di
+> `& .\.venv\Scripts\python.exe`.
 
 `scripts/cold_start.py` e' la verifica piu' utile per chi ha appena clonato
 il repository: rimuove il database, riavvia backend e dashboard con i
